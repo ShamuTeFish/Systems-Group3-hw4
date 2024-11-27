@@ -9,7 +9,7 @@
 typedef struct literal_table_entry_s {
     struct literal_table_entry_s *next;
     const char *text;
-    float_type value;
+    word_type value;
     unsigned int offset;
 } literal_table_entry_t;
 
@@ -65,7 +65,7 @@ void literal_table_initialize()
 // Requires: sought is the print form of value
 // return the offset of sought/value if it is in the table
 // otherwise return -1.
-int literal_table_find_offset(const char *sought, float_type value)
+int literal_table_find_offset(const char *sought, word_type value)
 {
     literal_table_okay();
     literal_table_entry_t *entry = first;
@@ -80,7 +80,7 @@ int literal_table_find_offset(const char *sought, float_type value)
 
 // Requires: sought is the print form of value
 // Return true just when sought is in the table
-bool literal_table_present(const char *sought, float_type value)
+bool literal_table_present(const char *sought, word_type value)
 {
     literal_table_okay();
     return literal_table_find_offset(sought, value) >= 0;
@@ -89,7 +89,7 @@ bool literal_table_present(const char *sought, float_type value)
 // Return the word offset for val_string/value
 // entering it in the table if it's not already present
 unsigned int literal_table_lookup(const char *val_string,
-				  float_type value)
+				  word_type value)
 {
     int ret = literal_table_find_offset(val_string, value);
     if (ret >= 0) {
@@ -151,7 +151,7 @@ bool literal_table_iteration_has_next()
 
 // Return the next float in the literal table
 // and advance the iteration
-float_type literal_table_iteration_next()
+word_type literal_table_iteration_next()
 {
     assert(iteration_next != NULL);
     float ret = iteration_next->value;
