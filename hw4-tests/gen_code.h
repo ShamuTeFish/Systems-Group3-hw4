@@ -6,17 +6,18 @@
 #include "bof.h"
 #include "instruction.h"
 #include "code.h"
+#include "code_seq.h"
 
 // Initialize the code generator
 extern void gen_code_initialize();
 
 // Requires: bf if open for writing in binary
 // Generate code for the given AST
-extern void gen_code_program(BOFFILE bf, program_t prog);
+extern void gen_code_program(BOFFILE bf, block_t prog);
 
 // Requires: bf if open for writing in binary
 // Generate code for prog into bf
-extern void gen_code_program(BOFFILE bf, program_t prog);
+extern void gen_code_program(BOFFILE bf, block_t prog);
 
 // Generate code for the var_decls_t vds to out
 // There are 2 instructions generated for each identifier declared
@@ -32,8 +33,8 @@ extern code_seq gen_code_var_decl(var_decl_t vd);
 // in reverse order (so the first declared are allocated last).
 // There are 2 instructions generated for each identifier declared
 // (one to allocate space and another to initialize that space)
-extern code_seq gen_code_idents(idents_t idents,
-				type_exp_e t);
+extern code_seq gen_code_idents(ident_t idents,
+				AST_type t);
 
 // Generate code for stmt
 extern code_seq gen_code_stmt(stmt_t stmt);
@@ -42,7 +43,7 @@ extern code_seq gen_code_stmt(stmt_t stmt);
 extern code_seq gen_code_assign_stmt(assign_stmt_t stmt);
 
 // Generate code for stmt
-extern code_seq gen_code_begin_stmt(begin_stmt_t stmt);
+//extern code_seq gen_code_begin_stmt(begin_stmt_t stmt);
 
 // Generate code for the list of statments given by stmts to out
 extern code_seq gen_code_stmts(stmts_t stmts);
@@ -54,7 +55,7 @@ extern code_seq gen_code_if_stmt(if_stmt_t stmt);
 extern code_seq gen_code_read_stmt(read_stmt_t stmt);
 
 // Generate code for the write statment given by stmt.
-extern code_seq gen_code_write_stmt(write_stmt_t stmt);
+//extern code_seq gen_code_write_stmt(write_stmt_t stmt);
 
 // Generate code for the expression exp
 // putting the result on top of the stack,
@@ -73,7 +74,7 @@ extern code_seq gen_code_binary_op_expr(binary_op_expr_t exp);
 // putting the result on top of the stack in their place,
 // and using V0 and AT as temporary registers
 // May also modify SP, HI,LO when executed
-extern code_seq gen_code_op(token_t op, type_exp_e typ);
+extern code_seq gen_code_op(token_t op, AST_type typ);
 
 // Generate code to apply the floating-point arith_op to the
 // 2nd from top and top of the stack,
@@ -87,7 +88,7 @@ extern code_seq gen_code_arith_op(token_t arith_op);
 // putting the result on top of the stack in their place,
 // and using V0 and AT as temporary registers
 // Also modifies SP when executed
-extern code_seq gen_code_rel_op(token_t rel_op, type_exp_e typ);
+extern code_seq gen_code_rel_op(token_t rel_op, AST_type typ);
 
 // Generate code to put the value of the given identifier
 // on top of the stack
