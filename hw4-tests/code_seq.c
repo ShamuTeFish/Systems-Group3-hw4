@@ -1,135 +1,145 @@
-/* $Id: code_seq.c,v 1.4 2024/11/08 21:01:43 leavens Exp $ */
-#include <stdlib.h>
-#include <limits.h>
+// $Id: code_utils.c,v 1.13 2024/11/27 23:59:00 leavens Exp $
 #include <assert.h>
-#include "utilities.h"
 #include "regname.h"
+#include "code.h"
 #include "code_seq.h"
+#include "code_utils.h"
 
-static void code_seq_okay(code_seq seq)
-{
-    // seq.first and seq.last are either both null or both not null
-    assert((seq.first == NULL) == (seq.last == NULL));
+#define MINIMAL_STACK_ALLOC_IN_WORDS 4
+#define SAVED_SP_OFFSET (-1)
+#define SAVED_FP_OFFSET (-2)
+#define SAVED_STATIC_LINK_OFFSET (-3)
+#define SAVED_RA_OFFSET (-4)
+
+/**
+ * Copies the value from register `s` to register `t`.
+ * If the VM does not support a CPR (copy register) instruction, this function
+ * uses the top of the stack as a temporary and modifies SP.
+ *
+ * @param t - Target register.
+ * @param s - Source register.
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_copy_regs(reg_num_type t, reg_num_type s) {
+    return code_seq_singleton(code_cpr(t, s));
 }
 
-// Return an empty code_seq
-code_seq code_seq_empty()
-{
-    code_seq ret;
-    ret.first = NULL;
-    ret.last = NULL;
-    code_seq_okay(ret);
+/**
+ * Loads the static link (located at `SAVED_STATIC_LINK_OFFSET` in memory
+ * relative to register `b`) into register `t`.
+ *
+ * @param t - Target register.
+ * @param b - Base register.
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_load_static_link_into_reg(reg_num_type t, reg_num_type b) {
+    return code_seq_singleton(code_lwr(t, b, SAVED_STATIC_LINK_OFFSET));
+}
+
+/**
+ * Computes the frame pointer (FP) for the given number of scopes outward
+ * and stores the result in the specified register.
+ *
+ * @param reg       - Target register for the frame pointer address.
+ * @param levelsOut - Number of scopes outward from the current frame.
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_compute_fp(reg_num_type reg, unsigned int levelsOut) {
+    assert(reg != FP && reg != RA);  // Ensure target is not FP or RA.
+    code_seq ret = code_utils_copy_regs(reg, FP);  // Start with the current frame.
+
+    while (levelsOut > 0) {
+        code_seq_concat(&ret, code_utils_load_static_link_into_reg(reg, reg));
+        levelsOut--;
+    }
+
     return ret;
 }
 
-// Requires: c != NULL
-// Return a code_seq containing just the given code
-code_seq code_seq_singleton(code *c)
-{
-    code_seq ret;
-    ret.first = c;
-    ret.last = c;
-    code_seq_okay(ret);
+/**
+ * Allocates the specified number of words on the runtime stack.
+ * Updates SP to address the last allocated word.
+ *
+ * @param words - Number of words to allocate.
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_allocate_stack_space(immediate_type words) {
+    assert(words >= 0);
+    return code_seq_singleton(code_sri(SP, words));
+}
+
+/**
+ * Deallocates the specified number of words from the runtime stack.
+ * Updates SP to its previous value.
+ *
+ * @param words - Number of words to deallocate.
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_deallocate_stack_space(immediate_type words) {
+    assert(words >= 0);
+    return code_seq_singleton(code_ari(SP, words));
+}
+
+/**
+ * Saves the callee's registers and sets up the runtime stack for a procedure.
+ * Modifies SP, FP, RA, and memory from SP to SP - `MINIMAL_STACK_ALLOC_IN_WORDS`.
+ *
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_save_registers_for_AR() {
+    code_seq ret = code_seq_empty();
+
+    // Save SP, FP, static link, and RA onto the stack.
+    code_seq_add_to_end(&ret, code_swr(SP, SAVED_SP_OFFSET, SP));
+    code_seq_add_to_end(&ret, code_swr(SP, SAVED_FP_OFFSET, FP));
+    code_seq_add_to_end(&ret, code_swr(SP, SAVED_STATIC_LINK_OFFSET, 3));  // $r3 is static link.
+    code_seq_add_to_end(&ret, code_swr(SP, SAVED_RA_OFFSET, RA));
+
+    // Update FP to point to the current stack frame.
+    code_seq_add_to_end(&ret, code_cpr(FP, SP));
+
+    // Allocate space for the saved registers.
+    code_seq_concat(&ret, code_utils_allocate_stack_space(MINIMAL_STACK_ALLOC_IN_WORDS));
+
     return ret;
 }
 
-// Is seq empty?
-bool code_seq_is_empty(code_seq seq)
-{
-    code_seq_okay(seq);
-    return seq.first == NULL;
-}
+/**
+ * Restores the callee's saved registers from the stack.
+ * Restores SP, FP, and RA to their saved values.
+ *
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_restore_registers_from_AR() {
+    code_seq ret = code_seq_empty();
 
-// Requires: !code_seq_is_empty(seq)
-// Return the first element of the given code sequence, seq
-code *code_seq_first(code_seq seq)
-{
-    assert(!code_seq_is_empty(seq));
-    return seq.first;
-}
+    // Restore RA, SP (temporarily in $r3), and FP.
+    code_seq_add_to_end(&ret, code_lwr(RA, FP, SAVED_RA_OFFSET));
+    code_seq_add_to_end(&ret, code_lwr(3, FP, SAVED_SP_OFFSET));
+    code_seq_add_to_end(&ret, code_lwr(FP, FP, SAVED_FP_OFFSET));
+    code_seq_add_to_end(&ret, code_cpr(SP, 3));  // Restore SP from $r3.
 
-// Requires: !code_seq_is_empty(seq)
-// Return a new code_seq containing
-// the rest of the given sequence, seq
-// Note that seq is not modified
-code_seq code_seq_rest(code_seq seq)
-{
-    assert(!code_seq_is_empty(seq));
-    code *first = seq.first;
-    code_seq ret;
-    ret.first = first->next;
-    if (ret.first == NULL) {
-	ret.last = NULL;
-    } else {
-	ret.last = seq.last;
-    }
-    code_seq_okay(ret);
     return ret;
 }
 
-// Return the size (number of instructions/words) in seq
-unsigned int code_seq_size(code_seq seq)
-{
-    unsigned int ret = 0;
-    while (!code_seq_is_empty(seq)) {
-	ret++;
-	seq = code_seq_rest(seq);
-    }
+/**
+ * Sets up the program's runtime stack as if it were in a call (from the OS).
+ *
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_set_up_program() {
+    code_seq ret = code_utils_copy_regs(3, FP);  // Save FP into $r3.
+    code_seq_concat(&ret, code_utils_save_registers_for_AR());
     return ret;
 }
 
-// Requires: !code_seq_is_empty(seq)
-// Return the last element in the given sequence
-code *code_seq_last_elem(code_seq seq)
-{
-    assert(!code_seq_is_empty(seq));
-    return seq.last;
-}
-
-// Requires: c != NULL && seq != NULL
-// Modify seq to add the given code *c added to its end
-void code_seq_add_to_end(code_seq *seq, code *c)
-{
-    assert(c != NULL);
-    if (code_seq_is_empty(*seq)) {
-	seq->first = c;
-	seq->last = c;
-    } else {
-	// assert(!code_seq_is_empty(seq));
-	code *last = code_seq_last_elem(*seq);
-	last->next = c;
-	c->next = NULL;
-	seq->last = c;
-    }
-    code_seq_okay(*seq);
-}
-
-// Requires: s1 != NULL && s2 != NULL
-// Modifies s1 to be the concatenation of s1 followed by s2
-void code_seq_concat(code_seq *s1, code_seq s2)
-{
-    if (code_seq_is_empty(*s1)) {
-	s1->first = s2.first;
-	s1->last = s2.last;
-    } else if (code_seq_is_empty(s2)) {
-        ; // s1 is already their concatenation
-    } else {
-	code *last = code_seq_last_elem(*s1);
-	// assert(last != NULL);
-	last->next = s2.first;
-	s1->last = s2.last;
-    }
-    code_seq_okay(*s1);
-}
-
-// Requires: out is open for writing.
-// Print the instructions in the code_seq to out
-// in assembly language format
-void code_seq_debug_print(FILE *out, code_seq seq)
-{
-    while(!code_seq_is_empty(seq)) {
-	fprintf(out, "%s\n",
-		instruction_assembly_form(0, code_seq_first(seq)->instr));
-	seq = code_seq_rest(seq);
-    }
+/**
+ * Tears down the program's runtime stack and exits with exit code 0.
+ *
+ * @return code_seq - The sequence of instructions for the operation.
+ */
+code_seq code_utils_tear_down_program() {
+    code_seq ret = code_utils_restore_registers_from_AR();
+    code_seq_add_to_end(&ret, code_exit(0));  // Exit with code 0.
+    return ret;
 }
