@@ -42,6 +42,8 @@ extern code_seq gen_code_stmt(stmt_t stmt);
 // Generate code for stmt
 extern code_seq gen_code_assign_stmt(assign_stmt_t stmt);
 
+extern code_seq gen_code_call_stmt(call_stmt_t stmt);
+
 // Generate code for stmt
 //extern code_seq gen_code_begin_stmt(begin_stmt_t stmt);
 
@@ -49,10 +51,16 @@ extern code_seq gen_code_assign_stmt(assign_stmt_t stmt);
 extern code_seq gen_code_stmts(stmts_t stmts);
 
 // Generate code for the if-statment given by stmt
-extern code_seq gen_code_if_stmt(if_stmt_t stmt);
+extern code_seq gen_code_if_stmt(if_stmt_t stmt_c);
+
+extern code_seq gen_code_while_stmt(while_stmt_t stmts);
 
 // Generate code for the read statment given by stmt
 extern code_seq gen_code_read_stmt(read_stmt_t stmt);
+
+extern code_seq gen_code_print_stmt(print_stmt_t stmts);
+
+extern code_seq gen_code_block_stmt(block_stmt_t stmts);
 
 // Generate code for the write statment given by stmt.
 //extern code_seq gen_code_write_stmt(write_stmt_t stmt);

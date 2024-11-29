@@ -70,11 +70,12 @@ void gen_code_program(BOFFILE bf, block_t prog)
     // We want to make the main program's AR look like all blocks... so:
     // allocate space and initialize any variables
     main_cs = gen_code_var_decls(prog.var_decls);
+
     int vars_len_in_bytes = (code_seq_size(main_cs) / 2);
     // there is no static link for the program as a whole,
     // so nothing to do for saving FP into A0 as would be done for a block
     code_seq_concat(&main_cs, code_utils_save_registers_for_AR());
-    code_seq_concat(&main_cs, gen_code_stmt(prog.stmts));
+    code_seq_concat(&main_cs, gen_code_stmt());
     code_seq_concat(&main_cs, code_utils_restore_registers_from_AR());
     code_seq_concat(&main_cs, code_utils_deallocate_stack_space(vars_len_in_bytes));
     code_seq_add_to_end(&main_cs, code_exit(exit_sc));
@@ -115,7 +116,8 @@ code_seq gen_code_idents(ident_list_t idents,
     code_seq ret = code_seq_empty();
     ident_t *idp = idents.start;
     while (idp != NULL) {
-	code_seq alloc_and_init = code_seq_singleton(code_addi(SP, SP));
+    //HY, Fixed this I think.
+	code_seq alloc_and_init = code_seq_singleton(code_addi(SP,0,0));
 	switch (vt) {
         case block_ast:
             code_seq_add_to_end(&alloc_and_init, code_fsw(SP, 0, 0));
@@ -224,6 +226,7 @@ code_seq gen_code_idents(ident_list_t idents,
 // Generate code for stmt
 code_seq gen_code_stmt(stmt_t stmt)
 {
+    //HY Impliment call while print block
     switch (stmt.stmt_kind) {
     case assign_stmt:
         return gen_code_assign_stmt(stmt.data.assign_stmt);
@@ -264,15 +267,14 @@ code_seq gen_code_assign_stmt(assign_stmt_t stmt)
     ret = gen_code_expr(*(stmt.expr));
     assert(stmt.idu != NULL);
     assert(id_use_get_attrs(stmt.idu) != NULL);
-    AST_type typ = id_use_get_attrs(stmt.)->kind;
+    AST_type typ = id_use_get_attrs(stmt.type_tag)->kind;
     code_seq_concat(&ret, code_pop_stack_into_reg(V0, typ));
     // put frame pointer from the lexical address of the name
     // (using stmt.idu) into $t9
-    ret = code_seq_concat(ret,
-			  code_compute_fp(T9, stmt.idu->levelsOutward));
+    ret = code_seq_concat(&ret, code_compute_fp(T9, stmt.idu->levelsOutward));
     unsigned int offset_count = id_use_get_attrs(stmt.idu)->offset_count;
     assert(offset_count <= USHRT_MAX); // it has to fit!
-    switch (id_use_get_attrs(stmt).) {
+    switch (id_use_get_attrs(stmt.idu->levelsOutward)) {
     case float_te:
 	ret = code_seq_add_to_end(ret,
 				  code_fsw(T9, V0, offset_count));
@@ -288,6 +290,10 @@ code_seq gen_code_assign_stmt(assign_stmt_t stmt)
     }
     return ret;
 }
+code_seq gen_code_call_stmt(call_stmt_t stmts){
+
+}
+
 
 /* Generate code for stmt
 code_seq gen_code_begin_stmt(begin_stmt_t stmt)
@@ -331,6 +337,9 @@ code_seq gen_code_if_stmt(if_stmt_t stmt)
 			      code_beq(V0, 0, cbody_len));
     return code_seq_concat(ret, cbody);
 }
+code_seq gen_code_while_stmt(while_stmt_t stmts){
+
+}
 
 // Generate code for the read statment given by stmt
 code_seq gen_code_read_stmt(read_stmt_t stmt)
@@ -348,6 +357,12 @@ code_seq gen_code_read_stmt(read_stmt_t stmt)
     ret = code_seq_add_to_end(ret,
 			      code_seq_singleton(code_fsw(T9, V0, offset_count)));
     return ret;
+}
+code_seq gen_code_print_stmt(print_stmt_t stmts){
+
+}
+code_seq gen_code_block_stmt(block_stmt_t stmts){
+
 }
 
 /* Generate code for the write statment given by stmt.
@@ -368,7 +383,7 @@ code_seq gen_code_write_stmt(write_stmt_t stmt)
 code_seq gen_code_expr(expr_t exp)
 {
     switch (exp.expr_kind) {
-    case expr_bin_op:
+    case expr_bin:
 	return gen_code_binary_op_expr(exp.data.binary);
 	break;
     case expr_ident:
@@ -377,8 +392,9 @@ code_seq gen_code_expr(expr_t exp)
     case expr_number:
 	return gen_code_number(exp.data.number);
 	break;
-    case expr_logical_not:
-	return gen_code_logical_not_expr(*(exp.data.logical_not));
+    case expr_negated:
+    //HY I think I fixed this.
+	return gen_code_logical_not_expr(exp);
 	break;
     default:
 	bail_with_error("Unexpected expr_kind_e (%d) in gen_code_expr",
@@ -397,12 +413,12 @@ code_seq gen_code_binary_op_expr(binary_op_expr_t exp)
 {
     // put the values of the two subexpressions on the stack
     code_seq ret = gen_code_expr(*(exp.expr1));
-    ret = code_seq_concat(ret, gen_code_expr(*(exp.expr2)));
+     ret = code_seq_concat(&ret, gen_code_expr(*(exp.expr2)));
     // check the types match
     AST_type t1 = ast_expr_type(*(exp.expr1));
     assert(ast_expr_type(*(exp.expr2)) == t1);
     // do the operation, putting the result on the stack
-    ret = code_seq_concat(ret, gen_code_op(exp.op, t1));
+    ret = code_seq_concat(&ret, gen_code_op(exp.arith_op, t1));
     return ret;
 }
 
